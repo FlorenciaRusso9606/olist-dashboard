@@ -36,7 +36,8 @@ backend/prisma/migrations/
 .idea/
 
 # Dataset CSV 
-database/csvs/
+database/csvs/*.csv
+database/csvs/*.zip
 
 # Coverage
 coverage/
