@@ -125,43 +125,33 @@ GET /api/rankings/products?from=2017-01-01&to=2017-12-31&metric=gmv|revenue&limi
 - `limit` máximo: 100
 
 ---
-
+```
 ## Arquitectura
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         FRONTEND (Next.js)                       │
-│  page.tsx → TanStack Query hooks → services/api.ts → HTTP       │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ HTTP / REST
-┌────────────────────────────▼────────────────────────────────────┐
-│                    BACKEND (Express — Hexagonal)                  │
-│                                                                   │
-│  adapters/http                                                    │
-│  ├── routes/index.ts          ← registra rutas                   │
-│  ├── controllers/*.ts         ← parsea HTTP, llama use case      │
-│  └── validation/schemas.ts    ← Zod, valida query params         │
-│                                                                   │
-│  application/usecases                                             │
-│  ├── GetKpis.ts               ← valida fechas, llama port        │
-│  ├── GetRevenueTrend.ts       ← valida grain, llama port         │
-│  └── GetTopProducts.ts        ← valida limit, llama port         │
-│                                                                   │
-│  domain                                                           │
-│  ├── ports/SalesRepository.ts ← interfaz (contrato)              │
-│  ├── entities/KpiResult.ts    ← tipos de retorno                 │
-│  └── filters/SalesFilters.ts  ← tipos de entrada                 │
-│                                                                   │
-│  infrastructure                                                   │
-│  └── repositories/PrismaSalesRepository.ts  ← implementa port   │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ Prisma $queryRaw → SQL
-┌────────────────────────────▼────────────────────────────────────┐
-│                    POSTGRESQL — 3 schemas                         │
-│  raw.*    ← CSV cargados tal cual (tipos TEXT, sin constraints)  │
-│  clean.*  ← tipos correctos, nulls manejados, deduplicado       │
-│  dwh.*    ← esquema estrella (fact_sales + 5 dimensiones)        │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    FE["FRONTEND (Next.js) — page.tsx → TanStack Query → api.ts"]
+
+    subgraph BE["BACKEND (Express — Hexagonal)"]
+        AD["adapters/http — routes · controllers · Zod"]
+        APP["application — GetKpis · GetRevenueTrend · GetTopProducts"]
+        DOM["domain — SalesRepository port · entities · filters"]
+        INF["infrastructure — PrismaSalesRepository"]
+    end
+
+    subgraph DB["POSTGRESQL — 3 schemas"]
+        RAW["raw.* — CSV tal cual, tipos TEXT"]
+        CLEAN["clean.* — tipos correctos, deduplicado"]
+        DWH["dwh.* — esquema estrella, fact_sales + 5 dims"]
+    end
+
+    FE -->|HTTP REST| AD
+    AD --> APP
+    APP --> DOM
+    DOM --> INF
+    INF -->|Prisma queryRaw| DWH
+    RAW -->|ETL| CLEAN
+    CLEAN -->|ETL| DWH
 ```
 
 **Regla crítica:** el backend **nunca** consulta `raw` ni `clean`. Todas las queries del API usan `dwh.fact_sales` como driving table, con JOINs a las dimensiones cuando se necesitan atributos.
